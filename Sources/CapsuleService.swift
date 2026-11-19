@@ -25,6 +25,12 @@ final class CapsuleService: ObservableObject {
     @Published var isConnected: Bool = false
     @Published var currentPort: Int?
     @Published var now: Date = Date()
+    @Published var pollInterval: TimeInterval = {
+        let saved = UserDefaults.standard.double(forKey: "pollInterval")
+        return saved > 0 ? saved : 1.5
+    }()
+
+    private static let pollIntervals: [TimeInterval] = [1.0, 1.5, 3.0, 5.0, 10.0]
 
     private let dbPath: String
     private var csrfToken: String?
@@ -47,18 +53,30 @@ final class CapsuleService: ObservableObject {
 
     func start() {
         Task { await fetchOnce() }
-
-        pollTimer?.invalidate()
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                await self?.fetchOnce()
-            }
-        }
+        schedulePollTimer()
 
         clockTimer?.invalidate()
         clockTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.now = Date()
+            }
+        }
+    }
+
+    func cyclePollInterval() {
+        let idx = Self.pollIntervals.firstIndex(where: { abs($0 - pollInterval) < 0.05 }) ?? 1
+        let next = Self.pollIntervals[(idx + 1) % Self.pollIntervals.count]
+        pollInterval = next
+        UserDefaults.standard.set(next, forKey: "pollInterval")
+        schedulePollTimer()
+        Task { await fetchOnce() }
+    }
+
+    private func schedulePollTimer() {
+        pollTimer?.invalidate()
+        pollTimer = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.fetchOnce()
             }
         }
     }

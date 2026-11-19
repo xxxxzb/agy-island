@@ -227,7 +227,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return !kind.isEmpty && kind != "none"
         }()
         let expandedW: CGFloat = state.hasNotch ? unifiedNotchW : 388
-        let contentDelta: CGFloat = state.isBarMode ? 244 : 214
+        let contentDelta: CGFloat = state.isBarMode ? 216 : 188
         let expandedH: CGFloat = (state.hasNotch ? (state.notchHeight + contentDelta) : (contentDelta + 12)) + (hasError ? 28 : 0)
 
         let width = expanded ? expandedW : compactW

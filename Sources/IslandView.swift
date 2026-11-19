@@ -40,7 +40,7 @@ struct IslandView: View {
     }
 
     private var expandedHeight: CGFloat {
-        let contentDelta: CGFloat = state.isBarMode ? 244 : 214
+        let contentDelta: CGFloat = state.isBarMode ? 216 : 188
         let base: CGFloat = state.hasNotch ? (state.notchHeight + contentDelta) : (contentDelta + 12)
         return hasRequestError ? (base + 28) : base
     }
@@ -450,7 +450,7 @@ struct IslandView: View {
     private func quotaBarRow(label: String, bucket: QuotaBucket) -> some View {
         let frac = max(0, min(bucket.remainingFraction ?? 0, 1))
         let pct = Int((frac * 100).rounded())
-        let color: Color = frac > 0.35 ? Color(hex: 0x3fb950) : (frac > 0.15 ? Color(hex: 0xd29922) : Color(hex: 0xf85149))
+        let color: Color = frac > 0.50 ? Color(hex: 0x3fb950) : (frac > 0.20 ? Color(hex: 0xd29922) : Color(hex: 0xf85149))
         let reset = IslandFormatters.formatCountdown(isoString: bucket.resetTime)
 
         return HStack(spacing: 6) {
@@ -488,7 +488,7 @@ struct IslandView: View {
     private func quotaPill(label: String, bucket: QuotaBucket) -> some View {
         let frac = max(0, min(bucket.remainingFraction ?? 0, 1))
         let pct = Int((frac * 100).rounded())
-        let color: Color = frac > 0.35 ? Color(hex: 0x3fb950) : (frac > 0.15 ? Color(hex: 0xd29922) : Color(hex: 0xf85149))
+        let color: Color = frac > 0.50 ? Color(hex: 0x3fb950) : (frac > 0.20 ? Color(hex: 0xd29922) : Color(hex: 0xf85149))
         let reset = IslandFormatters.formatCountdown(isoString: bucket.resetTime)
 
         return HStack(spacing: 4) {
@@ -510,21 +510,45 @@ struct IslandView: View {
         .cornerRadius(6)
     }
 
+    private var pollIntervalText: String {
+        let sec = service.pollInterval
+        if sec.truncatingRemainder(dividingBy: 1) == 0 {
+            return "每 \(Int(sec)) 秒同步"
+        }
+        return String(format: "每 %.1f 秒同步", sec)
+    }
+
     private var footerModeToggleRow: some View {
         HStack {
-            Text("每 1.5 秒同步")
-                .font(.system(size: 9.5))
-                .foregroundColor(.white.opacity(0.35))
+            Button {
+                service.cyclePollInterval()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 9))
+                    Text(pollIntervalText)
+                        .font(.system(size: 9.5))
+                }
+                .foregroundColor(.white.opacity(0.55))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(Color.white.opacity(0.05))
+                .cornerRadius(6)
+            }
+            .buttonStyle(.plain)
+            .help("点击切换同步频率（1秒 / 1.5秒 / 3秒 / 5秒 / 10秒）")
+
             Spacer()
+
             Button {
                 state.isBarMode.toggle()
                 UserDefaults.standard.set(state.isBarMode, forKey: "quotaBarMode")
                 onToggleQuotaMode?()
             } label: {
                 HStack(spacing: 4) {
-                    Image(systemName: state.isBarMode ? "textformat.123" : "chart.bar.fill")
+                    Image(systemName: state.isBarMode ? "chart.bar.fill" : "textformat.123")
                         .font(.system(size: 9.5))
-                    Text(state.isBarMode ? "数字视图" : "长条视图")
+                    Text(state.isBarMode ? "长条视图" : "数字视图")
                         .font(.system(size: 9.5, weight: .medium))
                 }
                 .foregroundColor(.white.opacity(0.75))
@@ -534,7 +558,7 @@ struct IslandView: View {
                 .cornerRadius(6)
             }
             .buttonStyle(.plain)
-            .help("切换配额展示样式（长条 / 数字）")
+            .help("切换配额展示样式（长条视图 / 数字视图）")
         }
         .padding(.top, -2)
     }
