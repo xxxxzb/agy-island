@@ -14,6 +14,7 @@ swiftc -O -parse-as-library \
   -framework AppKit \
   -framework SwiftUI \
   -framework Combine \
+  -lsqlite3 \
   "$DIR/Sources/Models.swift" \
   "$DIR/Sources/CapsuleService.swift" \
   "$DIR/Sources/IslandView.swift" \

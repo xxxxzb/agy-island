@@ -1,8 +1,8 @@
 # AgyIsland
 
-A lightweight, native macOS Dynamic Island (`NSPanel` + SwiftUI) for Antigravity's [`agy-capsule`](https://github.com/Lumidarin/agy-capsule) plugin — **zero CDP / `--remote-debugging-port` required**.
+A lightweight, native macOS Dynamic Island (`NSPanel` + SwiftUI) for Antigravity — **zero CDP (`--remote-debugging-port`) and zero plugin dependencies**.
 
-> 专为 Antigravity `agy-capsule` 打造的原生 macOS 刘海灵动岛悬浮窗，**无需开启 CDP 调试端口**即可在屏幕顶部实时查看上下文占用、缓存命中率、生成速度与模型配额。
+> 专为 Antigravity 打造的原生 macOS 刘海灵动岛悬浮窗，**无需开启 CDP 调试端口、无需安装任何 Antigravity 插件**，直连本地 `language_server` 实时显示上下文占用、缓存命中率、生成速度与模型配额。
 
 ## Screenshots
 
@@ -15,7 +15,7 @@ A lightweight, native macOS Dynamic Island (`NSPanel` + SwiftUI) for Antigravity
 ## Features
 
 - **Notch-Native & Non-Activating**: Automatically detects MacBook Pro notch geometry (`NSScreen.safeAreaInsets` & `auxiliaryTopLeftArea` / `auxiliaryTopRightArea`) and docks around the physical notch without stealing keyboard focus (`NSPanel` `.nonactivatingPanel`). Falls back to a centered top pill on non-notch displays.
-- **Zero-CDP Telemetry**: Automatically discovers the running `agy-capsule` sidecar port from `~/.gemini/antigravity/sidecar_data/agy-capsule/agy_capsule/logs/sidecar.log` and polls `http://127.0.0.1:<port>/api/context` every `1.5s`.
+- **Zero-CDP & Zero-Plugin Telemetry**: Automatically discovers the running Antigravity `language_server` process (`--csrf_token` & listening port) and queries `~/.gemini/antigravity/conversation_summaries.db` via SQLite3, polling `GetUserStatus` and `GetCascadeTrajectory` every `1.5s`.
 - **Compact Mode**:
   - **Left Ear**: Status dot + context usage percentage (amber `>=75%`, red `>=90%`).
   - **Right Ear**: Latest generation speed (`tok/s`) + Gemini `5h` remaining quota.
@@ -30,7 +30,7 @@ A lightweight, native macOS Dynamic Island (`NSPanel` + SwiftUI) for Antigravity
 
 - macOS 14.0+ (Apple Silicon / Intel)
 - Xcode Command Line Tools (`swiftc`)
-- [Antigravity](https://antigravity.google) with the [`agy-capsule`](https://github.com/Lumidarin/agy-capsule) plugin enabled
+- [Antigravity](https://antigravity.google) running locally (no plugin or debug flag required)
 
 ## Build & Run
 

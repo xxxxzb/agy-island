@@ -152,7 +152,7 @@ struct IslandView: View {
                 HStack {
                     HStack(spacing: 6) {
                         statusDot
-                        Text("agy-capsule")
+                        Text("AgyIsland")
                             .font(.system(size: 11.5, weight: .semibold))
                             .foregroundColor(.white.opacity(0.92))
                     }
@@ -172,7 +172,7 @@ struct IslandView: View {
                 HStack {
                     HStack(spacing: 6) {
                         statusDot
-                        Text("agy-capsule")
+                        Text("AgyIsland")
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundColor(.white.opacity(0.92))
                         if let port = service.currentPort {
@@ -237,10 +237,10 @@ struct IslandView: View {
             Image(systemName: "bolt.slash.fill")
                 .foregroundColor(.yellow)
             VStack(alignment: .leading, spacing: 2) {
-                Text("未检测到运行中的 agy-capsule")
+                Text("未检测到运行中的 Antigravity")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(.white)
-                Text("请确认 Antigravity 已打开且启用了 agy-capsule 插件")
+                Text("请打开 Antigravity 并开始任意对话")
                     .font(.system(size: 10.5))
                     .foregroundColor(.white.opacity(0.6))
             }
@@ -328,9 +328,15 @@ struct IslandView: View {
                                 .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
                                 .foregroundColor(speedColor)
                         }
-                        Text("TTFT \(IslandFormatters.formatDuration(gen.ttft))")
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(.white.opacity(0.55))
+                        if let ttft = gen.ttft {
+                            Text("TTFT \(IslandFormatters.formatDuration(ttft))")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(.white.opacity(0.55))
+                        } else if let dur = gen.duration {
+                            Text("Dur \(IslandFormatters.formatDuration(dur))")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(.white.opacity(0.55))
+                        }
                     }
                 }
             }
