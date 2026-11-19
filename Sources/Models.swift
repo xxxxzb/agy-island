@@ -1,6 +1,6 @@
 import Foundation
 
-struct CapsuleContext: Decodable {
+struct TelemetryContext: Decodable {
     let contextTokens: Int?
     let maxContextTokens: Int?
     let cachedIn: Int?

@@ -20,8 +20,8 @@ private final class LocalhostTLSDelegate: NSObject, URLSessionDelegate, @uncheck
 }
 
 @MainActor
-final class CapsuleService: ObservableObject {
-    @Published var context: CapsuleContext?
+final class TelemetryService: ObservableObject {
+    @Published var context: TelemetryContext?
     @Published var isConnected: Bool = false
     @Published var currentPort: Int?
     @Published var now: Date = Date()
@@ -296,7 +296,7 @@ final class CapsuleService: ObservableObject {
         quotaSummary: [String: Any]?,
         fallbackUserStatus: [String: Any]?,
         trajectoryResponse: [String: Any]?
-    ) -> CapsuleContext {
+    ) -> TelemetryContext {
         let quotaGroups = parseQuotaGroups(quotaSummary: quotaSummary, fallbackUserStatus: fallbackUserStatus)
 
         let steps = ((trajectoryResponse?["trajectory"] as? [String: Any])?["steps"] as? [[String: Any]]) ?? []
@@ -383,7 +383,7 @@ final class CapsuleService: ObservableObject {
             generation: gen
         )
 
-        return CapsuleContext(
+        return TelemetryContext(
             contextTokens: contextTokens,
             maxContextTokens: maxContextTokens,
             cachedIn: lastCachedIn,

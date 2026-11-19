@@ -39,7 +39,7 @@ final class TrackingHostingView<Content: View>: NSHostingView<Content> {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let service = CapsuleService()
+    private let service = TelemetryService()
     private let state = IslandState()
 
     private var panel: IslandPanel!

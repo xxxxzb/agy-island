@@ -12,7 +12,7 @@ final class IslandState: ObservableObject {
 }
 
 struct IslandView: View {
-    @ObservedObject var service: CapsuleService
+    @ObservedObject var service: TelemetryService
     @ObservedObject var state: IslandState
 
     var onTogglePin: () -> Void

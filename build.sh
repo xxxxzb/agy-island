@@ -16,7 +16,7 @@ swiftc -O -parse-as-library \
   -framework Combine \
   -lsqlite3 \
   "$DIR/Sources/Models.swift" \
-  "$DIR/Sources/CapsuleService.swift" \
+  "$DIR/Sources/TelemetryService.swift" \
   "$DIR/Sources/IslandView.swift" \
   "$DIR/Sources/AppMain.swift" \
   -o "$MACOS_DIR/AgyIsland"
