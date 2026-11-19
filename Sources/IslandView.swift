@@ -40,7 +40,7 @@ struct IslandView: View {
     }
 
     private var expandedHeight: CGFloat {
-        let contentDelta: CGFloat = state.isBarMode ? 216 : 188
+        let contentDelta: CGFloat = state.isBarMode ? 216 : 198
         let base: CGFloat = state.hasNotch ? (state.notchHeight + contentDelta) : (contentDelta + 12)
         return hasRequestError ? (base + 28) : base
     }
@@ -546,7 +546,7 @@ struct IslandView: View {
                 onToggleQuotaMode?()
             } label: {
                 HStack(spacing: 4) {
-                    Image(systemName: state.isBarMode ? "chart.bar.fill" : "textformat.123")
+                    Image(systemName: state.isBarMode ? "chart.bar.fill" : "number.square.fill")
                         .font(.system(size: 9.5))
                     Text(state.isBarMode ? "长条视图" : "数字视图")
                         .font(.system(size: 9.5, weight: .medium))
