@@ -8,6 +8,7 @@ final class IslandState: ObservableObject {
     @Published var notchWidth: CGFloat = 185
     @Published var notchHeight: CGFloat = 32
     @Published var isBarMode: Bool = UserDefaults.standard.object(forKey: "quotaBarMode") as? Bool ?? true
+    @Published var measuredExpandedHeight: CGFloat = 248
 }
 
 struct IslandView: View {
@@ -40,9 +41,7 @@ struct IslandView: View {
     }
 
     private var expandedHeight: CGFloat {
-        let contentDelta: CGFloat = state.isBarMode ? 216 : 198
-        let base: CGFloat = state.hasNotch ? (state.notchHeight + contentDelta) : (contentDelta + 12)
-        return hasRequestError ? (base + 28) : base
+        max(compactHeight + 40, state.measuredExpandedHeight)
     }
 
     private var hasRequestError: Bool {
@@ -214,6 +213,26 @@ struct IslandView: View {
             .padding(.horizontal, 14 + notchFlareRadius)
             .padding(.bottom, 12)
         }
+        .fixedSize(horizontal: false, vertical: true)
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear {
+                        let h = ceil(geo.size.height)
+                        if h > 40, abs(state.measuredExpandedHeight - h) > 0.5 {
+                            state.measuredExpandedHeight = h
+                            onToggleQuotaMode?()
+                        }
+                    }
+                    .onChange(of: geo.size.height) { _, newHeight in
+                        let h = ceil(newHeight)
+                        if h > 40, abs(state.measuredExpandedHeight - h) > 0.5 {
+                            state.measuredExpandedHeight = h
+                            onToggleQuotaMode?()
+                        }
+                    }
+            }
+        )
     }
 
     private var headerButtons: some View {

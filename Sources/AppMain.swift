@@ -222,13 +222,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let compactW: CGFloat = state.hasNotch ? unifiedNotchW : 228
         let compactH: CGFloat = state.hasNotch ? state.notchHeight : 28
 
-        let hasError: Bool = {
-            guard let kind = service.context?.requestError?.kind else { return false }
-            return !kind.isEmpty && kind != "none"
-        }()
         let expandedW: CGFloat = state.hasNotch ? unifiedNotchW : 388
-        let contentDelta: CGFloat = state.isBarMode ? 216 : 198
-        let expandedH: CGFloat = (state.hasNotch ? (state.notchHeight + contentDelta) : (contentDelta + 12)) + (hasError ? 28 : 0)
+        let expandedH: CGFloat = max(compactH + 40, state.measuredExpandedHeight)
 
         let width = expanded ? expandedW : compactW
         let height = expanded ? expandedH : compactH
