@@ -17,8 +17,12 @@ struct IslandView: View {
     var onRefresh: () -> Void
     var onQuit: () -> Void
 
+    private var notchFlareRadius: CGFloat {
+        state.hasNotch ? 6 : 0
+    }
+
     private var unifiedNotchWidth: CGFloat {
-        max(388, state.notchWidth + 200)
+        max(400, state.notchWidth + 212)
     }
 
     private var compactWidth: CGFloat {
@@ -63,21 +67,24 @@ struct IslandView: View {
             .background(
                 IslandBackgroundShape(
                     topCornerRadius: state.hasNotch ? 0 : 14,
-                    bottomCornerRadius: state.isExpanded ? 20 : (state.hasNotch ? 12 : 14)
+                    bottomCornerRadius: state.isExpanded ? 20 : (state.hasNotch ? 12 : 14),
+                    topFlareRadius: notchFlareRadius
                 )
                 .fill(Color(red: 0.02, green: 0.02, blue: 0.03))
             )
             .overlay(
                 IslandBackgroundShape(
                     topCornerRadius: state.hasNotch ? 0 : 14,
-                    bottomCornerRadius: state.isExpanded ? 20 : (state.hasNotch ? 12 : 14)
+                    bottomCornerRadius: state.isExpanded ? 20 : (state.hasNotch ? 12 : 14),
+                    topFlareRadius: notchFlareRadius
                 )
                 .strokeBorder(Color.white.opacity(state.isExpanded ? 0.14 : 0.08), lineWidth: 1)
             )
             .clipShape(
                 IslandBackgroundShape(
                     topCornerRadius: state.hasNotch ? 0 : 14,
-                    bottomCornerRadius: state.isExpanded ? 20 : (state.hasNotch ? 12 : 14)
+                    bottomCornerRadius: state.isExpanded ? 20 : (state.hasNotch ? 12 : 14),
+                    topFlareRadius: notchFlareRadius
                 )
             )
             .animation(.spring(response: 0.28, dampingFraction: 0.92), value: state.isExpanded)
@@ -99,7 +106,7 @@ struct IslandView: View {
                         .foregroundColor(contextColor)
                 }
                 .frame(maxWidth: .infinity, maxHeight: compactHeight)
-                .padding(.leading, 6)
+                .padding(.leading, 10)
 
                 // Hardware notch spacer
                 Spacer()
@@ -117,7 +124,7 @@ struct IslandView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: compactHeight)
-                .padding(.trailing, 6)
+                .padding(.trailing, 10)
             }
         } else {
             HStack(spacing: 8) {
@@ -199,7 +206,7 @@ struct IslandView: View {
                     quotaSection
                 }
             }
-            .padding(.horizontal, 14)
+            .padding(.horizontal, 14 + notchFlareRadius)
             .padding(.bottom, 14)
         }
     }
@@ -500,6 +507,7 @@ struct IslandView: View {
 struct IslandBackgroundShape: InsettableShape {
     var topCornerRadius: CGFloat
     var bottomCornerRadius: CGFloat
+    var topFlareRadius: CGFloat = 0
     var insetAmount: CGFloat = 0
 
     var animatableData: AnimatablePair<CGFloat, CGFloat> {
@@ -517,6 +525,62 @@ struct IslandBackgroundShape: InsettableShape {
     }
 
     func path(in rect: CGRect) -> Path {
+        let flare = max(0, topFlareRadius)
+        if flare > 0 {
+            // Notch-style shape with small outward-flared concave top corners
+            let r = CGRect(
+                x: rect.minX + insetAmount,
+                y: rect.minY,
+                width: max(0, rect.width - insetAmount * 2),
+                height: max(0, rect.height - insetAmount)
+            )
+            let fr = min(flare, r.width * 0.15, r.height * 0.45)
+            let br = max(0, min(bottomCornerRadius - insetAmount, (r.width - fr * 2) * 0.45, (r.height - fr) * 0.8))
+
+            var p = Path()
+            p.move(to: CGPoint(x: r.minX, y: r.minY))
+            p.addLine(to: CGPoint(x: r.maxX, y: r.minY))
+            // Top-right concave flare
+            p.addArc(
+                center: CGPoint(x: r.maxX, y: r.minY + fr),
+                radius: fr,
+                startAngle: .degrees(-90),
+                endAngle: .degrees(180),
+                clockwise: true
+            )
+            p.addLine(to: CGPoint(x: r.maxX - fr, y: r.maxY - br))
+            if br > 0 {
+                p.addArc(
+                    center: CGPoint(x: r.maxX - fr - br, y: r.maxY - br),
+                    radius: br,
+                    startAngle: .degrees(0),
+                    endAngle: .degrees(90),
+                    clockwise: false
+                )
+            }
+            p.addLine(to: CGPoint(x: r.minX + fr + br, y: r.maxY))
+            if br > 0 {
+                p.addArc(
+                    center: CGPoint(x: r.minX + fr + br, y: r.maxY - br),
+                    radius: br,
+                    startAngle: .degrees(90),
+                    endAngle: .degrees(180),
+                    clockwise: false
+                )
+            }
+            p.addLine(to: CGPoint(x: r.minX + fr, y: r.minY + fr))
+            // Top-left concave flare
+            p.addArc(
+                center: CGPoint(x: r.minX, y: r.minY + fr),
+                radius: fr,
+                startAngle: .degrees(0),
+                endAngle: .degrees(-90),
+                clockwise: true
+            )
+            p.closeSubpath()
+            return p
+        }
+
         let r = rect.insetBy(dx: insetAmount, dy: insetAmount)
         let tl = max(0, topCornerRadius - insetAmount)
         let tr = max(0, topCornerRadius - insetAmount)

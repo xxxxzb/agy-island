@@ -214,7 +214,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func applyPanelFrame(expanded: Bool) {
         guard let screen = targetScreen() else { return }
 
-        let unifiedNotchW = max(388, state.notchWidth + 200)
+        let unifiedNotchW = max(400, state.notchWidth + 212)
         let compactW: CGFloat = state.hasNotch ? unifiedNotchW : 228
         let compactH: CGFloat = state.hasNotch ? state.notchHeight : 28
 
