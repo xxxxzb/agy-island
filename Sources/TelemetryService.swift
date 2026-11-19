@@ -36,6 +36,8 @@ final class TelemetryService: ObservableObject {
     private var clockTimer: Timer?
     private var isFetching = false
     private var lastForceQuotaRefresh: Date = .distantPast
+    private var cachedTurn0ByConv: [String: Int] = [:]
+    private var lastFetchedKey: String = ""
 
     private let tlsDelegate = LocalhostTLSDelegate()
     private lazy var session: URLSession = {
@@ -179,7 +181,9 @@ final class TelemetryService: ObservableObject {
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
                 return nil
             }
-            return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            return await Task.detached(priority: .utility) {
+                (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            }.value
         } catch {
             return nil
         }
@@ -226,16 +230,24 @@ final class TelemetryService: ObservableObject {
         let allTraj = await allTrajTask
         let latestSummary = pickLatestTrajectorySummary(from: allTraj)
 
-        let trajDict: [String: Any]?
-        if let convId = latestSummary?.id {
-            trajDict = await callRPC(
+        let fetchKey = "\(latestSummary?.id ?? "")|\(latestSummary?.stepCount ?? -1)|\(latestSummary?.modTime ?? "")|\(latestSummary?.isRunning ?? false)"
+        let needsStepFetch = (fetchKey != lastFetchedKey) || (latestSummary?.isRunning ?? false) || (self.context == nil)
+
+        var steps: [[String: Any]] = []
+        if let summary = latestSummary, needsStepFetch {
+            let tailOffset = max(0, summary.stepCount - 16)
+            if let stepsResp = await callRPC(
                 port: port,
                 csrf: csrf,
-                method: "GetCascadeTrajectory",
-                body: ["cascadeId": convId]
-            )
-        } else {
-            trajDict = nil
+                method: "GetCascadeTrajectorySteps",
+                body: [
+                    "cascadeId": summary.id,
+                    "stepOffset": tailOffset,
+                    "trajectoryVerbosity": 3
+                ]
+            ), let rawSteps = stepsResp["steps"] as? [[String: Any]] {
+                steps = rawSteps
+            }
         }
 
         let quotaSummary = await quotaSummaryTask
@@ -255,52 +267,78 @@ final class TelemetryService: ObservableObject {
             }
         }
 
-        let built = buildContext(
-            quotaSummary: quotaSummary,
-            fallbackUserStatus: fallbackUserStatus,
-            trajectoryResponse: trajDict,
-            summaryRunning: latestSummary?.isRunning ?? false
-        )
-        self.context = built
+        if needsStepFetch || self.context == nil {
+            let built = buildContext(
+                convId: latestSummary?.id,
+                quotaSummary: quotaSummary,
+                fallbackUserStatus: fallbackUserStatus,
+                steps: steps,
+                summaryRunning: latestSummary?.isRunning ?? false
+            )
+            self.context = built
+            lastFetchedKey = fetchKey
+        } else if let quotaSummary {
+            // Only update quota groups if steps haven't changed
+            let updatedGroups = parseQuotaGroups(quotaSummary: quotaSummary, fallbackUserStatus: nil)
+            if let existing = self.context, !updatedGroups.isEmpty {
+                self.context = TelemetryContext(
+                    contextTokens: existing.contextTokens,
+                    maxContextTokens: existing.maxContextTokens,
+                    cachedIn: existing.cachedIn,
+                    uncachedIn: existing.uncachedIn,
+                    turn0Tokens: existing.turn0Tokens,
+                    totalOutputTokens: existing.totalOutputTokens,
+                    totalThinkingTokens: existing.totalThinkingTokens,
+                    lastStepEpochMs: existing.lastStepEpochMs,
+                    generation: existing.generation,
+                    turnSpeed: existing.turnSpeed,
+                    requestError: existing.requestError,
+                    quotaGroups: updatedGroups,
+                    cloudPaygo: existing.cloudPaygo
+                )
+            }
+        }
         self.isConnected = true
         self.now = Date()
     }
 
-    private func pickLatestTrajectorySummary(from response: [String: Any]?) -> (id: String, isRunning: Bool)? {
+    private func pickLatestTrajectorySummary(from response: [String: Any]?) -> (id: String, stepCount: Int, modTime: String, isRunning: Bool)? {
         guard let summaries = response?["trajectorySummaries"] as? [String: [String: Any]] else {
             return nil
         }
         var bestId: String?
         var bestTime = ""
+        var bestCount = 0
         var bestRunning = false
         for (cid, info) in summaries {
             let modTime = (info["lastModifiedTime"] as? String) ?? ""
             if modTime > bestTime {
                 bestTime = modTime
                 bestId = cid
+                bestCount = parseInt(info["stepCount"])
                 let status = (info["status"] as? String) ?? ""
                 bestRunning = status.contains("RUNNING")
             }
         }
         guard let id = bestId else { return nil }
-        return (id, bestRunning)
+        return (id, bestCount, bestTime, bestRunning)
     }
 
     private func buildContext(
+        convId: String?,
         quotaSummary: [String: Any]?,
         fallbackUserStatus: [String: Any]?,
-        trajectoryResponse: [String: Any]?,
+        steps: [[String: Any]],
         summaryRunning: Bool
     ) -> TelemetryContext {
         let quotaGroups = parseQuotaGroups(quotaSummary: quotaSummary, fallbackUserStatus: fallbackUserStatus)
 
-        let steps = ((trajectoryResponse?["trajectory"] as? [String: Any])?["steps"] as? [[String: Any]]) ?? []
         var hasActiveStep = summaryRunning
         if !hasActiveStep, let last = steps.last, let status = last["status"] as? String {
             hasActiveStep = status.contains("RUNNING") || status.contains("GENERATING") || status.contains("PENDING")
         }
 
-        var turn0Tokens = 0
+        var turn0Tokens = convId.flatMap { cachedTurn0ByConv[$0] } ?? 0
         var totalOutputTokens = 0
         var totalThinkingTokens = 0
 
