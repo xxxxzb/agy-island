@@ -15,7 +15,7 @@ A lightweight, native macOS Dynamic Island (`NSPanel` + SwiftUI) for Antigravity
 ## Features
 
 - **Notch-Native & Non-Activating**: Automatically detects MacBook Pro notch geometry (`NSScreen.safeAreaInsets` & `auxiliaryTopLeftArea` / `auxiliaryTopRightArea`) and docks around the physical notch without stealing keyboard focus (`NSPanel` `.nonactivatingPanel`). Falls back to a centered top pill on non-notch displays.
-- **Zero-CDP & Zero-Plugin Telemetry**: Automatically discovers the running Antigravity `language_server` process (`--csrf_token` & listening port) and queries `~/.gemini/antigravity/conversation_summaries.db` via SQLite3, polling `GetUserStatus` and `GetCascadeTrajectory` every `1.5s`.
+- **Zero-CDP & Zero-Plugin Telemetry**: Automatically discovers the running Antigravity `language_server` process (`--csrf_token` & listening port) and polls `RetrieveUserQuotaSummary`, `GetAllCascadeTrajectories`, and `GetCascadeTrajectory` directly at your chosen interval (`1s`–`10s`).
 - **Compact Mode**:
   - **Left Ear**: Status dot + context usage percentage (amber `>=75%`, red `>=90%`).
   - **Right Ear**: Latest generation speed (`tok/s`) + Gemini `5h` remaining quota.

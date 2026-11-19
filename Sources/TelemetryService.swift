@@ -1,6 +1,5 @@
 import Foundation
 import Combine
-import SQLite3
 
 private final class LocalhostTLSDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
     func urlSession(
@@ -32,11 +31,11 @@ final class TelemetryService: ObservableObject {
 
     private static let pollIntervals: [TimeInterval] = [1.0, 1.5, 3.0, 5.0, 10.0]
 
-    private let dbPath: String
     private var csrfToken: String?
     private var pollTimer: Timer?
     private var clockTimer: Timer?
     private var isFetching = false
+    private var lastForceQuotaRefresh: Date = .distantPast
 
     private let tlsDelegate = LocalhostTLSDelegate()
     private lazy var session: URLSession = {
@@ -46,10 +45,7 @@ final class TelemetryService: ObservableObject {
         return URLSession(configuration: cfg, delegate: tlsDelegate, delegateQueue: nil)
     }()
 
-    init() {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        self.dbPath = "\(home)/.gemini/antigravity/conversation_summaries.db"
-    }
+    init() {}
 
     func start() {
         Task { await fetchOnce() }
@@ -89,9 +85,8 @@ final class TelemetryService: ObservableObject {
     }
 
     func refreshNow() {
-        currentPort = nil
-        csrfToken = nil
-        Task { await fetchOnce() }
+        lastForceQuotaRefresh = .distantPast
+        Task { await fetchOnce(forceQuota: true) }
     }
 
     // MARK: - Direct Antigravity Language Server Discovery
@@ -166,29 +161,6 @@ final class TelemetryService: ObservableObject {
         }
     }
 
-    // MARK: - SQLite Latest Conversation Query
-
-    nonisolated private func latestConversationId() -> String? {
-        var db: OpaquePointer?
-        guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
-            if db != nil { sqlite3_close(db) }
-            return nil
-        }
-        defer { sqlite3_close(db) }
-
-        let sql = "SELECT conversation_id FROM conversation_summaries ORDER BY last_modified_time DESC LIMIT 1;"
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
-            return nil
-        }
-        defer { sqlite3_finalize(stmt) }
-
-        if sqlite3_step(stmt) == SQLITE_ROW, let cStr = sqlite3_column_text(stmt, 0) {
-            return String(cString: cStr)
-        }
-        return nil
-    }
-
     // MARK: - RPC & Data Assembly
 
     private func callRPC(port: Int, csrf: String, method: String, body: [String: Any]) async -> [String: Any]? {
@@ -213,7 +185,7 @@ final class TelemetryService: ObservableObject {
         }
     }
 
-    private func fetchOnce() async {
+    private func fetchOnce(forceQuota: Bool = false) async {
         if isFetching { return }
         isFetching = true
         defer { isFetching = false }
@@ -233,31 +205,29 @@ final class TelemetryService: ObservableObject {
             return
         }
 
+        let shouldForceQuota = forceQuota || Date().timeIntervalSince(lastForceQuotaRefresh) >= 30.0
+        if shouldForceQuota {
+            lastForceQuotaRefresh = Date()
+        }
+
         async let quotaSummaryTask = callRPC(
             port: port,
             csrf: csrf,
             method: "RetrieveUserQuotaSummary",
-            body: [:]
+            body: shouldForceQuota ? ["forceRefresh": true] : [:]
         )
-        let convId = await Task.detached(priority: .utility) { [dbPath = self.dbPath] () -> String? in
-            var db: OpaquePointer?
-            guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
-                if db != nil { sqlite3_close(db) }
-                return nil
-            }
-            defer { sqlite3_close(db) }
-            let sql = "SELECT conversation_id FROM conversation_summaries ORDER BY last_modified_time DESC LIMIT 1;"
-            var stmt: OpaquePointer?
-            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
-            defer { sqlite3_finalize(stmt) }
-            if sqlite3_step(stmt) == SQLITE_ROW, let cStr = sqlite3_column_text(stmt, 0) {
-                return String(cString: cStr)
-            }
-            return nil
-        }.value
+        async let allTrajTask = callRPC(
+            port: port,
+            csrf: csrf,
+            method: "GetAllCascadeTrajectories",
+            body: ["excludeSubtrajectories": true]
+        )
+
+        let allTraj = await allTrajTask
+        let latestSummary = pickLatestTrajectorySummary(from: allTraj)
 
         let trajDict: [String: Any]?
-        if let convId {
+        if let convId = latestSummary?.id {
             trajDict = await callRPC(
                 port: port,
                 csrf: csrf,
@@ -278,7 +248,6 @@ final class TelemetryService: ObservableObject {
                 body: ["metadata": ["ideName": "antigravity", "extensionName": "antigravity", "locale": "en"]]
             )
             if fallbackUserStatus == nil {
-                // Port or token may have changed after Antigravity restart
                 currentPort = nil
                 csrfToken = nil
                 isConnected = false
@@ -286,22 +255,48 @@ final class TelemetryService: ObservableObject {
             }
         }
 
-        let built = buildContext(quotaSummary: quotaSummary, fallbackUserStatus: fallbackUserStatus, trajectoryResponse: trajDict)
+        let built = buildContext(
+            quotaSummary: quotaSummary,
+            fallbackUserStatus: fallbackUserStatus,
+            trajectoryResponse: trajDict,
+            summaryRunning: latestSummary?.isRunning ?? false
+        )
         self.context = built
         self.isConnected = true
         self.now = Date()
     }
 
+    private func pickLatestTrajectorySummary(from response: [String: Any]?) -> (id: String, isRunning: Bool)? {
+        guard let summaries = response?["trajectorySummaries"] as? [String: [String: Any]] else {
+            return nil
+        }
+        var bestId: String?
+        var bestTime = ""
+        var bestRunning = false
+        for (cid, info) in summaries {
+            let modTime = (info["lastModifiedTime"] as? String) ?? ""
+            if modTime > bestTime {
+                bestTime = modTime
+                bestId = cid
+                let status = (info["status"] as? String) ?? ""
+                bestRunning = status.contains("RUNNING")
+            }
+        }
+        guard let id = bestId else { return nil }
+        return (id, bestRunning)
+    }
+
     private func buildContext(
         quotaSummary: [String: Any]?,
         fallbackUserStatus: [String: Any]?,
-        trajectoryResponse: [String: Any]?
+        trajectoryResponse: [String: Any]?,
+        summaryRunning: Bool
     ) -> TelemetryContext {
         let quotaGroups = parseQuotaGroups(quotaSummary: quotaSummary, fallbackUserStatus: fallbackUserStatus)
 
         let steps = ((trajectoryResponse?["trajectory"] as? [String: Any])?["steps"] as? [[String: Any]]) ?? []
-        var hasActiveStep = false
-        if let last = steps.last, let status = last["status"] as? String {
+        var hasActiveStep = summaryRunning
+        if !hasActiveStep, let last = steps.last, let status = last["status"] as? String {
             hasActiveStep = status.contains("RUNNING") || status.contains("GENERATING") || status.contains("PENDING")
         }
 
