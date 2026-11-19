@@ -85,21 +85,21 @@ enum IslandFormatters {
         }
         guard let date = target else { return "--" }
         let diff = Int(date.timeIntervalSinceNow)
-        if diff <= 0 { return "now" }
+        if diff <= 0 { return "即将刷新" }
         let days = diff / 86400
         let hours = (diff % 86400) / 3600
         let mins = (diff % 3600) / 60
-        if days > 0 { return "\(days)d\(hours)h" }
-        if hours > 0 { return "\(hours)h\(mins)m" }
-        return "\(max(1, mins))m"
+        if days > 0 { return "\(days)天\(hours)时" }
+        if hours > 0 { return "\(hours)时\(mins)分" }
+        return "\(max(1, mins))分"
     }
 
     static func formatDuration(_ seconds: Double?) -> String {
         guard let seconds, seconds > 0 else { return "--" }
         if seconds >= 60 {
-            return String(format: "%.1fm", seconds / 60.0)
+            return String(format: "%.1f分", seconds / 60.0)
         }
-        return String(format: "%.1fs", seconds)
+        return String(format: "%.1f秒", seconds)
     }
 
     static func cacheIdleSeconds(lastStepEpochMs: Double?) -> TimeInterval? {

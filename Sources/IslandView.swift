@@ -7,6 +7,7 @@ final class IslandState: ObservableObject {
     @Published var hasNotch: Bool = false
     @Published var notchWidth: CGFloat = 185
     @Published var notchHeight: CGFloat = 32
+    @Published var isBarMode: Bool = UserDefaults.standard.object(forKey: "quotaBarMode") as? Bool ?? true
 }
 
 struct IslandView: View {
@@ -16,6 +17,7 @@ struct IslandView: View {
     var onTogglePin: () -> Void
     var onRefresh: () -> Void
     var onQuit: () -> Void
+    var onToggleQuotaMode: (() -> Void)? = nil
 
     private var notchFlareRadius: CGFloat {
         state.hasNotch ? 6 : 0
@@ -36,8 +38,10 @@ struct IslandView: View {
     private var expandedWidth: CGFloat {
         state.hasNotch ? unifiedNotchWidth : 388
     }
+
     private var expandedHeight: CGFloat {
-        let base: CGFloat = state.hasNotch ? (state.notchHeight + 196) : 208
+        let contentDelta: CGFloat = state.isBarMode ? 244 : 214
+        let base: CGFloat = state.hasNotch ? (state.notchHeight + contentDelta) : (contentDelta + 12)
         return hasRequestError ? (base + 28) : base
     }
 
@@ -204,10 +208,11 @@ struct IslandView: View {
                         errorBanner(err)
                     }
                     quotaSection
+                    footerModeToggleRow
                 }
             }
             .padding(.horizontal, 14 + notchFlareRadius)
-            .padding(.bottom, 14)
+            .padding(.bottom, 12)
         }
     }
 
@@ -279,7 +284,7 @@ struct IslandView: View {
                 Text(String(format: "%.1f%%", pct * 100))
                     .font(.system(size: 16, weight: .bold, design: .monospaced))
                     .foregroundColor(contextColor)
-                Text("context")
+                Text("上下文")
                     .font(.system(size: 11))
                     .foregroundColor(.white.opacity(0.55))
                 Spacer()
@@ -316,11 +321,11 @@ struct IslandView: View {
                     Circle()
                         .fill(cacheStatusColor)
                         .frame(width: 6, height: 6)
-                    Text("Cache \(cacheHitPct)%")
+                    Text("缓存 \(cacheHitPct)%")
                         .font(.system(size: 10.5, design: .monospaced))
                         .foregroundColor(.white.opacity(0.75))
                     if let idle = IslandFormatters.cacheIdleSeconds(lastStepEpochMs: ctx?.lastStepEpochMs) {
-                        Text("(\(Int(idle / 60))m)")
+                        Text("(\(Int(idle / 60))分)")
                             .font(.system(size: 10, design: .monospaced))
                             .foregroundColor(cacheStatusColor.opacity(0.9))
                     }
@@ -336,11 +341,11 @@ struct IslandView: View {
                                 .foregroundColor(speedColor)
                         }
                         if let ttft = gen.ttft {
-                            Text("TTFT \(IslandFormatters.formatDuration(ttft))")
+                            Text("首字 \(IslandFormatters.formatDuration(ttft))")
                                 .font(.system(size: 10, design: .monospaced))
                                 .foregroundColor(.white.opacity(0.55))
                         } else if let dur = gen.duration {
-                            Text("Dur \(IslandFormatters.formatDuration(dur))")
+                            Text("耗时 \(IslandFormatters.formatDuration(dur))")
                                 .font(.system(size: 10, design: .monospaced))
                                 .foregroundColor(.white.opacity(0.55))
                         }
@@ -358,11 +363,11 @@ struct IslandView: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 11))
                 .foregroundColor(.red)
-            Text(err.kind ?? "error")
+            Text(err.kind ?? "请求失败")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(.red.opacity(0.95))
             if let retry = err.retryAfterSec, retry > 0 {
-                Text("retry in \(retry)s")
+                Text("\(retry)秒后重试")
                     .font(.system(size: 10.5, design: .monospaced))
                     .foregroundColor(.white.opacity(0.7))
             }
@@ -378,7 +383,7 @@ struct IslandView: View {
         let groups = service.context?.quotaGroups ?? []
         return VStack(spacing: 6) {
             if groups.isEmpty {
-                Text(service.context?.cloudPaygo == true ? "Cloud Pay-As-You-Go" : "暂无配额数据")
+                Text(service.context?.cloudPaygo == true ? "按量计费模式" : "暂无配额数据")
                     .font(.system(size: 11))
                     .foregroundColor(.white.opacity(0.5))
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -398,24 +403,86 @@ struct IslandView: View {
         let b5h = buckets.first(where: { $0.window == "5h" })
         let b7d = buckets.first(where: { $0.window == "weekly" })
 
-        return HStack(spacing: 8) {
-            Text(group.shortName)
-                .font(.system(size: 11.5, weight: .semibold))
-                .foregroundColor(.white.opacity(0.9))
-                .frame(width: 54, alignment: .leading)
+        return Group {
+            if state.isBarMode {
+                HStack(alignment: .center, spacing: 10) {
+                    Text(group.shortName)
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.9))
+                        .frame(width: 50, alignment: .leading)
 
-            if let b5h {
-                quotaPill(label: "5h", bucket: b5h)
+                    VStack(spacing: 5) {
+                        if let b5h {
+                            quotaBarRow(label: "5小时", bucket: b5h)
+                        }
+                        if let b7d {
+                            quotaBarRow(label: "7天", bucket: b7d)
+                        }
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(Color.white.opacity(0.06))
+                .cornerRadius(9)
+            } else {
+                HStack(spacing: 8) {
+                    Text(group.shortName)
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.9))
+                        .frame(width: 50, alignment: .leading)
+
+                    if let b5h {
+                        quotaPill(label: "5小时", bucket: b5h)
+                    }
+                    if let b7d {
+                        quotaPill(label: "7天", bucket: b7d)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(Color.white.opacity(0.06))
+                .cornerRadius(9)
             }
-            if let b7d {
-                quotaPill(label: "7d", bucket: b7d)
-            }
-            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(Color.white.opacity(0.06))
-        .cornerRadius(9)
+    }
+
+    private func quotaBarRow(label: String, bucket: QuotaBucket) -> some View {
+        let frac = max(0, min(bucket.remainingFraction ?? 0, 1))
+        let pct = Int((frac * 100).rounded())
+        let color: Color = frac > 0.35 ? Color(hex: 0x3fb950) : (frac > 0.15 ? Color(hex: 0xd29922) : Color(hex: 0xf85149))
+        let reset = IslandFormatters.formatCountdown(isoString: bucket.resetTime)
+
+        return HStack(spacing: 6) {
+            Text(label)
+                .font(.system(size: 9.5, weight: .medium))
+                .foregroundColor(.white.opacity(0.55))
+                .frame(width: 30, alignment: .leading)
+
+            GeometryReader { geo in
+                let w = geo.size.width
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 2.5)
+                        .fill(Color.white.opacity(0.10))
+                    RoundedRectangle(cornerRadius: 2.5)
+                        .fill(color)
+                        .frame(width: max(2, w * CGFloat(frac)))
+                }
+            }
+            .frame(height: 5)
+
+            HStack(spacing: 3) {
+                Text("\(pct)%")
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundColor(color)
+                if frac < 0.999 && reset != "--" {
+                    Text(reset)
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.45))
+                }
+            }
+            .frame(minWidth: 74, alignment: .trailing)
+        }
     }
 
     private func quotaPill(label: String, bucket: QuotaBucket) -> some View {
@@ -424,7 +491,7 @@ struct IslandView: View {
         let color: Color = frac > 0.35 ? Color(hex: 0x3fb950) : (frac > 0.15 ? Color(hex: 0xd29922) : Color(hex: 0xf85149))
         let reset = IslandFormatters.formatCountdown(isoString: bucket.resetTime)
 
-        return HStack(spacing: 5) {
+        return HStack(spacing: 4) {
             Text(label)
                 .font(.system(size: 10, weight: .medium))
                 .foregroundColor(.white.opacity(0.5))
@@ -443,6 +510,35 @@ struct IslandView: View {
         .cornerRadius(6)
     }
 
+    private var footerModeToggleRow: some View {
+        HStack {
+            Text("每 1.5 秒同步")
+                .font(.system(size: 9.5))
+                .foregroundColor(.white.opacity(0.35))
+            Spacer()
+            Button {
+                state.isBarMode.toggle()
+                UserDefaults.standard.set(state.isBarMode, forKey: "quotaBarMode")
+                onToggleQuotaMode?()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: state.isBarMode ? "textformat.123" : "chart.bar.fill")
+                        .font(.system(size: 9.5))
+                    Text(state.isBarMode ? "数字视图" : "长条视图")
+                        .font(.system(size: 9.5, weight: .medium))
+                }
+                .foregroundColor(.white.opacity(0.75))
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(Color.white.opacity(0.08))
+                .cornerRadius(6)
+            }
+            .buttonStyle(.plain)
+            .help("切换配额展示样式（长条 / 数字）")
+        }
+        .padding(.top, -2)
+    }
+
     // MARK: - Computed Helpers
 
     private var statusDot: some View {
@@ -454,7 +550,7 @@ struct IslandView: View {
     }
 
     private var contextPercentText: String {
-        guard service.isConnected || service.context != nil else { return "OFF" }
+        guard service.isConnected || service.context != nil else { return "离线" }
         let used = service.context?.contextTokens ?? 0
         let maxTok = max(service.context?.maxContextTokens ?? 1, 1)
         let pct = Double(used) / Double(maxTok) * 100.0

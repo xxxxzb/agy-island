@@ -215,11 +215,11 @@ final class CapsuleService: ObservableObject {
             return
         }
 
-        async let userStatusTask = callRPC(
+        async let quotaSummaryTask = callRPC(
             port: port,
             csrf: csrf,
-            method: "GetUserStatus",
-            body: ["metadata": ["ideName": "antigravity", "extensionName": "antigravity", "locale": "en"]]
+            method: "RetrieveUserQuotaSummary",
+            body: [:]
         )
         let convId = await Task.detached(priority: .utility) { [dbPath = self.dbPath] () -> String? in
             var db: OpaquePointer?
@@ -250,22 +250,36 @@ final class CapsuleService: ObservableObject {
             trajDict = nil
         }
 
-        guard let userStatus = await userStatusTask else {
-            // Port or token may have changed after Antigravity restart
-            currentPort = nil
-            csrfToken = nil
-            isConnected = false
-            return
+        let quotaSummary = await quotaSummaryTask
+        var fallbackUserStatus: [String: Any]? = nil
+        if quotaSummary == nil {
+            fallbackUserStatus = await callRPC(
+                port: port,
+                csrf: csrf,
+                method: "GetUserStatus",
+                body: ["metadata": ["ideName": "antigravity", "extensionName": "antigravity", "locale": "en"]]
+            )
+            if fallbackUserStatus == nil {
+                // Port or token may have changed after Antigravity restart
+                currentPort = nil
+                csrfToken = nil
+                isConnected = false
+                return
+            }
         }
 
-        let built = buildContext(userStatus: userStatus, trajectoryResponse: trajDict)
+        let built = buildContext(quotaSummary: quotaSummary, fallbackUserStatus: fallbackUserStatus, trajectoryResponse: trajDict)
         self.context = built
         self.isConnected = true
         self.now = Date()
     }
 
-    private func buildContext(userStatus: [String: Any], trajectoryResponse: [String: Any]?) -> CapsuleContext {
-        let quotaGroups = parseQuotaGroups(from: userStatus)
+    private func buildContext(
+        quotaSummary: [String: Any]?,
+        fallbackUserStatus: [String: Any]?,
+        trajectoryResponse: [String: Any]?
+    ) -> CapsuleContext {
+        let quotaGroups = parseQuotaGroups(quotaSummary: quotaSummary, fallbackUserStatus: fallbackUserStatus)
 
         let steps = ((trajectoryResponse?["trajectory"] as? [String: Any])?["steps"] as? [[String: Any]]) ?? []
         var hasActiveStep = false
@@ -330,7 +344,7 @@ final class CapsuleService: ObservableObject {
         if let last = steps.last,
            let status = last["status"] as? String,
            status.contains("ERROR") {
-            errorInfo = RequestErrorInfo(kind: "Request failed", diagnostic: status, retryAfterSec: nil)
+            errorInfo = RequestErrorInfo(kind: "请求失败", diagnostic: status, retryAfterSec: nil)
         }
 
         let contextTokens = lastCachedIn + lastUncachedIn + lastOutput
@@ -368,8 +382,40 @@ final class CapsuleService: ObservableObject {
         )
     }
 
-    private func parseQuotaGroups(from userStatus: [String: Any]) -> [QuotaGroup] {
-        guard let us = userStatus["userStatus"] as? [String: Any],
+    private func parseQuotaGroups(quotaSummary: [String: Any]?, fallbackUserStatus: [String: Any]?) -> [QuotaGroup] {
+        if let summary = quotaSummary,
+           let resp = summary["response"] as? [String: Any],
+           let rawGroups = resp["groups"] as? [[String: Any]] {
+            var groups: [QuotaGroup] = []
+            for g in rawGroups {
+                guard let displayName = g["displayName"] as? String else { continue }
+                let rawBuckets = (g["buckets"] as? [[String: Any]]) ?? []
+                var buckets: [QuotaBucket] = []
+                for b in rawBuckets {
+                    guard let bucketId = b["bucketId"] as? String else { continue }
+                    let bName = b["displayName"] as? String
+                    let window = b["window"] as? String
+                    let frac = b["remainingFraction"] as? Double
+                    let reset = b["resetTime"] as? String
+                    buckets.append(QuotaBucket(
+                        bucketId: bucketId,
+                        displayName: bName,
+                        window: window,
+                        remainingFraction: frac,
+                        resetTime: reset
+                    ))
+                }
+                if !buckets.isEmpty {
+                    groups.append(QuotaGroup(displayName: displayName, buckets: buckets))
+                }
+            }
+            if !groups.isEmpty {
+                return groups
+            }
+        }
+
+        guard let userStatus = fallbackUserStatus,
+              let us = userStatus["userStatus"] as? [String: Any],
               let cm = us["cascadeModelConfigData"] as? [String: Any],
               let configs = cm["clientModelConfigs"] as? [[String: Any]] else {
             return []
